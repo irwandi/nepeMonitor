@@ -1,5 +1,4 @@
 
-
 #include <time.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
@@ -13,15 +12,16 @@ DHT dht(DHTPIN, DHTTYPE);
 const char* ssid = "Debug101";
 const char* password = "SuperCepat101";
 
-struct tm timeinfo;
+//struct tm timeinfo;
 ESP8266WebServer server(80);
 
 int checkInterval     = 0;
 int timeSinceLastRead = 0;
 
-int cntRead     = 0;
+int cntRead = 0;
+int cntTime = 0;
 
-boolean isPompaOn = false;
+boolean isPumpOn = false;
 
 float avgTemp   = 0;
 float avgHumid  = 0;
@@ -36,7 +36,7 @@ void setup() {
   // Wait for serial to initialize.
   while (!Serial) { }
 
-  Serial.print("connecting to ");
+  Serial.print("Connecting to ");
   Serial.println(ssid);
   WiFi.mode(WIFI_STA);
   WiFi.hostname("nepe");
@@ -45,21 +45,23 @@ void setup() {
     delay(500);
     Serial.print(".");
   }
+
   Serial.println("");
   Serial.println("WiFi connected");
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
 
-  configTime(8 * 3600, 0, "pool.ntp.org", "time.nist.gov");
-  time_t now = time(nullptr);
-  while (now < 8 * 3600 * 2) {
-    delay(500);
-    Serial.print(".");
-    now = time(nullptr);
-  }
-  Serial.println("");
-  //struct tm timeinfo;
-  gmtime_r(&now, &timeinfo);
+  // UNUSED
+  //  configTime(8 * 3600, 0, "pool.ntp.org", "time.nist.gov");
+  //  time_t now = time(nullptr);
+  //  while (now < 8 * 3600 * 2) {
+  //    delay(500);
+  //    Serial.print(".");
+  //    now = time(nullptr);
+  //  }
+  //  Serial.println("");
+  //  //struct tm timeinfo;
+  //  gmtime_r(&now, &timeinfo);
 
   Serial.println("Device Started");
   Serial.println("-------------------------------------");
@@ -67,18 +69,77 @@ void setup() {
   Serial.println("-------------------------------------");
 
   server.begin();
+
+  Serial.println("-------------------------------------");
   Serial.println("Web server Started..");
   delay(10000);
+
+  Serial.println("-------------------------------------");
   Serial.println("Web server Running..");
 
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH);
 
+  ///// Server handler
+  server.on("/", displayStatus);
+  server.on("/on", runPump);
+
   detect();
 
 }
 
+void displayStatus() {
+  String page = "";
+  page += "<!DOCTYPE html> <html lang='en'> <head> <meta charset='utf-8'> <meta http-equiv='X-UA-Compatible' content='IE=edge'> <meta name='viewport' content='width=device-width, initial-scale=1'> <title>Nepe Monitor</title>";
+  page += "<link rel='stylesheet' href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css' integrity='sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u' crossorigin='anonymous'>";
+  page += "<link rel='stylesheet' href='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap-theme.min.css' integrity='sha384-rHyoN1iRsVXV4nD0JutlnGaslCJuC7uwjduW9SVrLvRYooPp2bWYgmgJQIXwl/Sp' crossorigin='anonymous'>";
+  page += "</head><body> <div class='container theme-showcase' role='main'>";
+  page += "<nav class='navbar navbar-inverse navbar-fixed-top'> <div class='container'> <div class='navbar-header'><a class='navbar-brand' href='#'>Nepe Monitor</a></div></div></nav>";
+  page += "<br/>&nbsp;<br/>&nbsp;<div class='row'><div class='col-sm-12'><div class='panel panel-primary'><div class='panel-heading'><h3 class='panel-title'>Near Realtime Sensor</h3></div><div class='list-group-item'>";
+  page += "<h4 class='list-group-item-heading'>Temperature</h4>";
+  page += "<p class='list-group-item-text'>";
+  page += lastTemp;
+  page += "&#x2103;</p></div><div class='list-group-item'><h4 class='list-group-item-heading'>Humidity</h4>";
+  page += "<p class='list-group-item-text'>";
+  page += lastHumid;
+  page += " %</p></div></div></div></div><div class='row'><div class='col-sm-12'><div class='panel panel-success'><div class='panel-heading'><h3 class='panel-title'>Average Sensor</h3></div>";
+  page += "<div class='list-group-item'><h4 class='list-group-item-heading'>Temperature</h4>";
+  page += "<p class='list-group-item-text'>";
+  page += avgTemp / cntRead;
+  page += "&#x2103;</p></div><div class='list-group-item'><h4 class='list-group-item-heading'>Humidity</h4>";
+  page += "<p class='list-group-item-text'>";
+  page += avgHumid / cntRead;
+  page += "</p></div></div></div></div><div class='progress'>";
+  page += "<div class='progress-bar progress-bar-striped' role='progressbar' aria-valuenow='";
+  page += cntTime;
+  page += "' aria-valuemin='0' aria-valuemax='1800000' style='width: ";
+  page += (int) ((cntTime / 18000));
+  page += "%'>";
+  page += "</div></div>";
+
+  if (!isPumpOn) {
+    page += "<button type='button' class='btn btn-lg btn-danger col-sm-12'>Set Pump On For 1 Minute</button>";
+  }
+
+  page += "</div>";
+  page += "<script src='https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js'></script><script>$(function() {$('.btn-danger').click(function() {var ask = confirm('Nyalain Pompa ?');if(ask) {$('.btn-danger').hide(); $.get( 'on', function( ) {location.reload();});}});});</script>";
+  page += "<script src='https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js' integrity='sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa' crossorigin='anonymous'></script>";
+  page += "</body></html>";
+  //  page += cntTime;
+  //  page += " - ";
+  //  page += (String)(cntTime / 18000);
+
+  Serial.println(cntTime / 18000);
+
+  // lastTemp, lastHumid, avgTemp/cntRead, avgHumid/cntRead, 18000, 50);
+
+  server.send ( 200, "text/html", page );
+}
+
 void detect() {
+  // Always Reset Counter :)
+  checkInterval = 0;
+
   // Reading temperature or humidity takes about 250 milliseconds!
   // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
   float h = dht.readHumidity();
@@ -89,7 +150,6 @@ void detect() {
   // Check if any reads failed and exit early (to try again).
   if (isnan(h) || isnan(t) ) {
     Serial.println("Failed to read from DHT sensor!");
-    timeSinceLastRead = 0;
     return;
   }
 
@@ -104,65 +164,82 @@ void detect() {
 }
 
 void runPump() {
+  server.send(200, "text/plain", "1");
 
+  if ( isPumpOn ) {
+    // No Double Exec :)
+    return;
+  }
+
+  isPumpOn = true;
+
+  // Nyala Selama 10 Detik.
+
+  Serial.println("Pump Run 1");
+  digitalWrite(LED_BUILTIN, LOW);
+  delay(10000);
+  digitalWrite(LED_BUILTIN, HIGH);
+  delay(5000);
+  Serial.println("Pump Run 2");
+  digitalWrite(LED_BUILTIN, LOW);
+  delay(10000);
+  digitalWrite(LED_BUILTIN, HIGH);
+  delay(5000);
+  Serial.println("Pump Run 3");
+  digitalWrite(LED_BUILTIN, LOW);
+  delay(10000);
+  digitalWrite(LED_BUILTIN, HIGH);
+  delay(5000);
+  Serial.println("Pump Run 4");
+  digitalWrite(LED_BUILTIN, LOW);
+  delay(10000);
+  digitalWrite(LED_BUILTIN, HIGH);
+  delay(5000);
+  Serial.println("Pump Run 5");
+  digitalWrite(LED_BUILTIN, LOW);
+  delay(10000);
+  digitalWrite(LED_BUILTIN, HIGH);
+  delay(5000);
+  Serial.println("Pump Run 6");
+  digitalWrite(LED_BUILTIN, LOW);
+  delay(10000);
+  
+  // Turn It Of.
+  digitalWrite(LED_BUILTIN, HIGH);
+  
+  isPumpOn = false;
+}
+
+void resetCounter() {
+  checkInterval = 0;
+  avgTemp       = 0;
+  avgHumid      = 0;
+  cntRead       = 0;
+  cntTime       = 0;
+
+  digitalWrite(LED_BUILTIN, HIGH);
 }
 
 void loop() {
-  WiFiClient client = server.available();
-  
-  // Counter Detik.
+
+  // Counter "Detik" ?
   checkInterval += 1;
-  
+
   if ( checkInterval >= 3000 ) {
     detect();
   }
 
-  if (client) {
-    Serial.println("New client");
-    // bolean to locate when the http request ends
-    boolean blank_line = true;
-    while (client.connected()) {
-      if (client.available()) {
-        char c = client.read();
+  server.handleClient();
 
-        if (c == '\n' && blank_line) {
+  delay(1);
+  cntTime += 1;
 
-          client.println("HTTP/1.1 200 OK");
-          client.println("Content-Type: text/html");
-          client.println("Connection: close");
-          client.println();
-          // your actual web page that displays temperature and humidity
-          client.println("<!DOCTYPE HTML>");
-          client.println("<html>");
-          client.println("<head><title>Pompa Nepe</title></head><body><h1>Near Realtime - Temperature and Humidity</h1><hr><h3>Temperature in Celsius: ");
-          client.println(lastTemp);
-          client.println("*C<br>Humidity: ");
-          client.println(lastHumid);
-          client.println("%</h3><hr><h1>Average - Temperature and Humidity</h1><h3>Temperature : ");
-          client.println(avgTemp/cntRead);
-          client.println("*C<br>Humidity: ");
-          client.println(avgHumid/cntRead);
-          client.println("</h3><hr><hr>");
-          client.println("<h1>Nyalain Pompa Manual</h1><button type=\"button\">Click Me!</button>");
-          client.println("</body></html>");
-          break;
-        }
-        if (c == '\n') {
-          // when starts reading a new line
-          blank_line = true;
-        }
-        else if (c != '\r') {
-          // when finds a character on the current line
-          blank_line = false;
-        }
-      }
+  if (cntTime > 1800000) {
+    if( ((avgTemp/cntRead) >= 30) || (( avgHumid/cntRead ) <= 85) ) {
+      runPump();
     }
-    // closing the client connection
-    delay(1);
-    client.stop();
-    Serial.println("Client disconnected.");
+
+    resetCounter();
+    cntTime = 0;
   }
-
-
-
 }
