@@ -118,7 +118,7 @@ void displayStatus() {
   page += "</div></div>";
 
   if (!isPumpOn) {
-    page += "<button type='button' class='btn btn-lg btn-danger col-sm-12'>Set Pump On For 1 Minute</button>";
+    page += "<button type='button' class='btn btn-lg btn-danger col-sm-12'>Set Pump On For 30 Second</button>";
   }
 
   page += "</div>";
@@ -180,34 +180,25 @@ void runPump() {
   delay(10000);
   digitalWrite(LED_BUILTIN, HIGH);
   delay(5000);
+
   Serial.println("Pump Run 2");
   digitalWrite(LED_BUILTIN, LOW);
   delay(10000);
   digitalWrite(LED_BUILTIN, HIGH);
   delay(5000);
+
+
   Serial.println("Pump Run 3");
   digitalWrite(LED_BUILTIN, LOW);
   delay(10000);
-  digitalWrite(LED_BUILTIN, HIGH);
-  delay(5000);
-  Serial.println("Pump Run 4");
-  digitalWrite(LED_BUILTIN, LOW);
-  delay(10000);
-  digitalWrite(LED_BUILTIN, HIGH);
-  delay(5000);
-  Serial.println("Pump Run 5");
-  digitalWrite(LED_BUILTIN, LOW);
-  delay(10000);
-  digitalWrite(LED_BUILTIN, HIGH);
-  delay(5000);
-  Serial.println("Pump Run 6");
-  digitalWrite(LED_BUILTIN, LOW);
-  delay(10000);
-  
+
   // Turn It Of.
-  digitalWrite(LED_BUILTIN, HIGH);
   
+  Serial.println("Force Pump OFF");
+  digitalWrite(LED_BUILTIN, HIGH);
+
   isPumpOn = false;
+  resetCounter();
 }
 
 void resetCounter() {
@@ -234,8 +225,10 @@ void loop() {
   delay(1);
   cntTime += 1;
 
-  if (cntTime > 1800000) {
-    if( ((avgTemp/cntRead) >= 30) || (( avgHumid/cntRead ) <= 85) ) {
+
+  // 1 jam ?
+  if (cntTime > 2700000) {
+    if ( ((avgTemp / cntRead) >= 30) || (( avgHumid / cntRead ) <= 85) ) {
       runPump();
     }
 
